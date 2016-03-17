@@ -14,6 +14,9 @@ from pylab import *
 TODO:
     whitening, etc.
 
+DOESN'T SEEM TO BE WORKING?
+or just need to change params...
+
 """
 
 # TODO: test me!

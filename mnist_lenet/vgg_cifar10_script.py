@@ -9,8 +9,8 @@ np = numpy
 from theano import tensor
 
 from blocks.algorithms import GradientDescent, Scale
-from blocks.bricks import (MLP, Rectifier, Initializable, FeedforwardSequence,
-                           Activation, Softmax)
+from blocks.bricks import (MLP, Activation, Rectifier, Initializable, FeedforwardSequence,
+                           Softmax)
 from blocks.bricks.conv import (ConvolutionalSequence,
                                 Flattener, MaxPooling)
 from blocks.bricks.cost import CategoricalCrossEntropy, MisclassificationRate
@@ -29,18 +29,28 @@ from toolz.itertoolz import interleave
 
 
 # TODO: what am I actually using from these?????
-from blocks_utils import get_batch
+#from capy.blocks_utils import *
 #from capy.theano_utils import *
 
 from lenet import LeNet
 from get_data_streams import get_data_streams
 
 import inspect
+from block_utils import get_batch
 
 """
+
+An attempt to implement the vgg-style network described here:
+    http://torch.ch/blog/2015/07/30/cifar.html 
+    (92.45% on CIFAR10) 
+    They use only horizontal flips (we don't, yet)
+
 TODO:
-    extensions (what do I want to monitor???)
-    regularizers (BN, dropout)
+    everything!
+
+
+
+START OVER FROM lenet_script!
 """
 
 if __name__ == "__main__":
@@ -55,11 +65,9 @@ if __name__ == "__main__":
     # DK params
     parser.add_argument("--data_set", type=str, default="MNIST")
     parser.add_argument("--init_scale", type=float, default=None)
-    parser.add_argument("--learning_rate", type=float, default=.1)
-    parser.add_argument("--momentum", type=float, default=0.)
     parser.add_argument("--percent_noised", type=int, default=0)
-    parser.add_argument("--permuted", type=int, default=0) # shuffle input dims
     parser.add_argument("--remove_noised", type=int, default=0)
+    parser.add_argument("--permuted", type=int, default=0) # shuffle input dims
     args = parser.parse_args()
     args_dict = vars(args)
     locals().update(args_dict)
@@ -79,25 +87,21 @@ if __name__ == "__main__":
     input_size, output_size, train_stream, valid_stream, test_stream = get_data_streams(
             data_set, batch_size, percent_noised, remove_noised, permuted)
 
-    print input_size
-    if len(input_size) == 3: # CIFAR or other multi-channel input
-        num_channels = input_size[2]
-        input_size = input_size[:2]
-    elif len(input_size) == 2:
-        num_channels = 1
-    else:
-        assert False
 
     # ------------------------- make CNN ----------------------------- #
+    # make layers:
+    layers = []
+
+    # make CNN model
+
+
     conv_activations = [Rectifier() for _ in feature_maps]
     mlp_activations = [Rectifier() for _ in mlp_hiddens] + [Softmax()]
-    if init_scale is not None:
-        weights_init = Uniform(width=init_scale)
+    if self.init_scale is not None:
+        weights_init = Uniform(width=self.init_scale)
     else:
         weights_init = Uniform(width=.2)
-    convnet = LeNet(conv_activations, 
-                    num_channels=num_channels,
-                    image_shape=input_size,
+    convnet = LeNet(conv_activations, 1, image_size,
                     filter_sizes=zip(conv_sizes, conv_sizes),
                     feature_maps=feature_maps,
                     pooling_sizes=zip(pool_sizes, pool_sizes),
@@ -106,7 +110,7 @@ if __name__ == "__main__":
                     border_mode='full',
                     weights_init=weights_init,
                     biases_init=Constant(0))
-    if init_scale is None:
+    if self.init_scale is None:
         # We push initialization config so that we can then
         # set different initialization schemes for convolutional layers.
         convnet.push_initialization_config()
@@ -138,22 +142,21 @@ if __name__ == "__main__":
 
     cg = ComputationGraph([cost, error_rate])
 
-    # TODO: use momentum!
     algorithm = GradientDescent(
         cost=cost, parameters=cg.parameters,
-        step_rule=Scale(learning_rate=learning_rate))
+        step_rule=Scale(learning_rate=0.1))
     extensions = [Timing(),
                   DataStreamMonitoring(
-                      [cost, error_rate],
+                      [cost, error_rate, sfcost],
                       valid_stream,
                       prefix="valid"),
                   TrainingDataMonitoring(
-                      [cost, error_rate,
+                      [cost, error_rate, sfcost,
                        aggregation.mean(algorithm.total_gradient_norm)],
                       prefix="train",
                       after_epoch=True),
                   Checkpoint(save_path),
-                  #ProgressBar(),
+                  ProgressBar(),
                   Printing(),
                   TrackTheBest('valid_error_rate'),
                   FinishIfNoImprovementAfter('valid_error_rate_best_so_far', epochs=10)]
