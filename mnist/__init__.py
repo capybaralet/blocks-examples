@@ -6,7 +6,7 @@ from argparse import ArgumentParser
 from theano import tensor
 
 from blocks.algorithms import GradientDescent, Scale
-from blocks.bricks import MLP, Tanh, Softmax, WEIGHT
+from blocks.bricks import MLP, Tanh, Softmax, WEIGHT, Rectifier
 from blocks.bricks.cost import CategoricalCrossEntropy, MisclassificationRate
 from blocks.initialization import IsotropicGaussian, Constant
 from fuel.streams import DataStream
@@ -31,7 +31,7 @@ except:
 
 
 def main(save_to, num_epochs):
-    mlp = MLP([Tanh(), Softmax()], [784, 100, 10],
+    mlp = MLP([Rectifier(), Softmax()], [784, 500, 10],
               weights_init=IsotropicGaussian(0.01),
               biases_init=Constant(0))
     mlp.initialize()
@@ -48,6 +48,9 @@ def main(save_to, num_epochs):
 
     mnist_train = MNIST(("train",))
     mnist_test = MNIST(("test",))
+
+    import ipdb; ipdb.set_trace()
+
 
     algorithm = GradientDescent(
         cost=cost, parameters=cg.parameters,
