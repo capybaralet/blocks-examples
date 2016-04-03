@@ -34,7 +34,11 @@ from blocks.bricks.base import lazy, application
 #from capy.blocks_utils import *
 #from capy.theano_utils import *
 
-#TODO: BatchNorm, dropout, ImageNet, "view", CNN class
+# TODO: BatchNorm, dropout, ImageNet, "view", CNN class
+
+# TODO: resnets!
+
+# TODO: initializations!
 
 """
 Networks to implement:
@@ -51,12 +55,12 @@ CIFAR:
             pad: 4,4,4
             max pooling
             no LRN
-    VGG (BN, dropout)
+    VGG (TODO: BN, dropout, initialization)
 
 ImageNet:
     AlexNet (LRN??)
     VGG (BN)
-
+    ResNet
 
 """
 
