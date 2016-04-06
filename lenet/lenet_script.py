@@ -22,6 +22,7 @@ from blocks.extensions.saveload import Checkpoint
 from blocks.extensions.stopping import FinishIfNoImprovementAfter
 from blocks.extensions.training import TrackTheBest
 from blocks.graph import ComputationGraph
+from blocks.graph import apply_dropout
 from blocks.initialization import Constant, Uniform
 from blocks.main_loop import MainLoop
 from blocks.model import Model
@@ -40,15 +41,14 @@ import inspect
 """
 TODO:
     extensions (what do I want to monitor???)
-    regularizers (BN, dropout)
-"""
+    batch norm (use https://github.com/Thrandis/batch_norm/blob/master/batch_norm.py)
 
-# FIXME?: top_mlp is initialized outside ConvNet class
+    lr-decay!
+"""
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     parser = ArgumentParser("parse")
-    # TODO: checkme - vs _
     parser.add_argument("--conv_sizes", type=str, default="5_5")
     parser.add_argument("--feature_maps", type=str, default="20_50")
     parser.add_argument("--mlp_hiddens", type=str, default="500")
@@ -57,17 +57,21 @@ if __name__ == "__main__":
     # DK params
     parser.add_argument("--data_set", type=str, default="MNIST")
     parser.add_argument("--init_scale", type=float, default=None)
-    parser.add_argument("--learning_rate", type=float, default=.1)
+    parser.add_argument("--lr", type=float, default=.1)
     #parser.add_argument("--momentum", type=float, default=0.)
     momentum = .9
-    parser.add_argument("--optimizer", type=str, default='adam')
+    parser.add_argument("--optimizer", type=str, default='momentum')
     parser.add_argument("--percent_noised", type=int, default=0)
     parser.add_argument("--permuted", type=int, default=0) # shuffle input dims
     parser.add_argument("--remove_noised", type=int, default=0)
+    # regularization
+    parser.add_argument("--L2", type=float, default=0) # TODO: separate for each layer?
+    parser.add_argument("--dropout", type=float, default=1) # TODO: separate for each layer?
     args = parser.parse_args()
     args_dict = vars(args)
     locals().update(args_dict)
 
+    # FIXME: make save_path if not exists
     save_path = os.path.join(os.environ["SAVE_PATH"], os.path.basename(__file__)[:-3])
     settings_str = '__'.join([arg + "=" + str(args_dict[arg]) for arg in sorted(args_dict.keys())])
     save_path += "/" + settings_str
@@ -104,7 +108,7 @@ if __name__ == "__main__":
         weights_init = Uniform(width=init_scale)
     else:
         weights_init = Uniform(width=.2)
-    convnet = ConvNet(conv_activations, 
+    convnet = ConvNet(conv_activations,
                     num_channels=num_channels,
                     image_shape=input_size,
                     filter_sizes=zip(conv_sizes, conv_sizes),
@@ -147,17 +151,27 @@ if __name__ == "__main__":
 
     cg = ComputationGraph([cost, error_rate])
 
+    if L2:
+        cost += L2 * sum([tensor.sum(x**2) for x in cg.intermediary_variables if x.name == 'W'])**.5
+        cost = cost.copy(name='cost')
+        cg = ComputationGraph([cost, error_rate])
+
+    if dropout < 1.0:
+        dropout_inputs = [x for x in cg.intermediary_variables if x.name is not None and 'output' in x.name and 'rectifier' in x.name]
+        cg = apply_dropout(cg, dropout_inputs, dropout)
+
+
     if optimizer == 'adam':
-        algorithm = GradientDescent(step_rule=Adam(learning_rate),
+        algorithm = GradientDescent(step_rule=Adam(lr),
                                     cost=cost,
                                     parameters=cg.parameters)
     elif optimizer == 'momentum':
         algorithm = GradientDescent(step_rule=Momentum(
-                                        learning_rate=learning_rate,
+                                        learning_rate=lr,
                                         momentum=momentum),
                                     cost=cost,
                                     parameters=cg.parameters)
-            
+
     extensions = [Timing(),
                   DataStreamMonitoring(
                       [cost, error_rate],
@@ -168,8 +182,8 @@ if __name__ == "__main__":
                        aggregation.mean(algorithm.total_gradient_norm)],
                       prefix="train",
                       after_epoch=True),
-                  Checkpoint(save_path),
-                  ProgressBar(),
+                  Checkpoint(save_path), # FIXME: only saves after training!!!
+                  #ProgressBar(),
                   Printing(),
                   TrackTheBest('valid_error_rate'),
                   FinishIfNoImprovementAfter('valid_error_rate_best_so_far', epochs=10)]
