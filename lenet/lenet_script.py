@@ -76,8 +76,13 @@ if __name__ == "__main__":
     # convert argparsed strings to lists of ints
     conv_sizes = [int(item) for item in conv_sizes.split("_")]
     feature_maps = [int(item) for item in feature_maps.split("_")]
-    mlp_hiddens = [int(item) for item in mlp_hiddens.split("_")]
     pool_sizes = [int(item) for item in pool_sizes.split("_")]
+    if mlp_hiddens == 'None':
+        mlp_hiddens = []
+    else:
+        mlp_hiddens = [int(item) for item in mlp_hiddens.split("_")]
+
+    print mlp_hiddens
 
     # get data
     input_size, output_size, train_stream, valid_stream, test_stream = get_data_streams(
@@ -110,7 +115,7 @@ if __name__ == "__main__":
                     border_mode='full',
                     weights_init=weights_init,
                     biases_init=Constant(0))
-    if self.init_scale is None:
+    if init_scale is None:
         # We push initialization config so that we can then
         # set different initialization schemes for convolutional layers.
         convnet.push_initialization_config()
