@@ -1,0 +1,10 @@
+
+
+permuting the input pixels seems to work,
+BUT
+noising the labels doesn't!!!
+
+
+for extensions, look at WSJ code and TIMIT code
+
+
