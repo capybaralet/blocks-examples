@@ -8,3 +8,7 @@ noising the labels doesn't!!!
 for extensions, look at WSJ code and TIMIT code
 
 
+Where is the plotting script???
+
+
+

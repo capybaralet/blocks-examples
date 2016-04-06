@@ -22,7 +22,6 @@ from blocks.extensions.saveload import Checkpoint
 from blocks.extensions.stopping import FinishIfNoImprovementAfter
 from blocks.extensions.training import TrackTheBest
 from blocks.graph import ComputationGraph
-from blocks.graph import apply_dropout
 from blocks.initialization import Constant, Uniform
 from blocks.main_loop import MainLoop
 from blocks.model import Model
@@ -41,56 +40,58 @@ import inspect
 """
 TODO:
     extensions (what do I want to monitor???)
-    batch norm (use https://github.com/Thrandis/batch_norm/blob/master/batch_norm.py)
-
-    lr-decay!
+    regularizers (BN, dropout)
 """
+
+# FIXME?: top_mlp is initialized outside ConvNet class
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     parser = ArgumentParser("parse")
-    parser.add_argument("--conv_sizes", type=str, default="5_5")
-    parser.add_argument("--feature_maps", type=str, default="20_50")
-    parser.add_argument("--mlp_hiddens", type=str, default="500")
-    parser.add_argument("--pool_sizes", type=str, default="2_2")
+    # model and task
+    parser.add_argument("--dataset", type=str, default="MNIST")
+    parser.add_argument("--net", type=str, default="LeNet")
+    # training hyper-params
     parser.add_argument("--batch_size", type=int, default=128)
-    # DK params
-    parser.add_argument("--data_set", type=str, default="MNIST")
-    parser.add_argument("--init_scale", type=float, default=None)
-    parser.add_argument("--lr", type=float, default=.1)
-    #parser.add_argument("--momentum", type=float, default=0.)
-    momentum = .9
+    parser.add_argument("--init_scale", type=float, default=.01)
+    parser.add_argument("--learning_rate", type=float, default=.01)
     parser.add_argument("--optimizer", type=str, default='momentum')
+    # extra weird-ness
     parser.add_argument("--percent_noised", type=int, default=0)
     parser.add_argument("--permuted", type=int, default=0) # shuffle input dims
     parser.add_argument("--remove_noised", type=int, default=0)
-    # regularization
-    parser.add_argument("--L2", type=float, default=0) # TODO: separate for each layer?
-    parser.add_argument("--dropout", type=float, default=1) # TODO: separate for each layer?
     args = parser.parse_args()
     args_dict = vars(args)
     locals().update(args_dict)
 
-    # FIXME: make save_path if not exists
     save_path = os.path.join(os.environ["SAVE_PATH"], os.path.basename(__file__)[:-3])
+    script_dir = os.path.join(os.environ['SAVE_PATH'], os.path.basename(__file__)[:-3])
+    print script_dir
+    if not os.path.exists(script_dir): # make sure script_dir exists
+        print "making directory:", script_dir
+        try:
+            os.makedirs(script_dir)
+        except:
+            pass
     settings_str = '__'.join([arg + "=" + str(args_dict[arg]) for arg in sorted(args_dict.keys())])
-    save_path += "/" + settings_str
+    save_path = script_dir + "/" + settings_str
     print save_path
 
     # convert argparsed strings to lists of ints
-    conv_sizes = [int(item) for item in conv_sizes.split("_")]
-    feature_maps = [int(item) for item in feature_maps.split("_")]
-    pool_sizes = [int(item) for item in pool_sizes.split("_")]
-    if mlp_hiddens == 'None':
+    if net == "LeNet":
+        conv_sizes = [5,5]
+        feature_maps = [20,50]
+        pool_sizes = [2,2]
+        mlp_hiddens = [500]
+    elif net == "AlexNet":
+        conv_sizes = [5,5,5]
+        feature_maps = [32, 32, 64]
+        pool_sizes = [2,2,2]
         mlp_hiddens = []
-    else:
-        mlp_hiddens = [int(item) for item in mlp_hiddens.split("_")]
-
-    print mlp_hiddens
 
     # get data
     input_size, output_size, train_stream, valid_stream, test_stream = get_data_streams(
-            data_set, batch_size, percent_noised, remove_noised, permuted)
+            dataset, batch_size, percent_noised, remove_noised, permuted)
 
     print input_size
     if len(input_size) == 3: # CIFAR or other multi-channel input
@@ -107,8 +108,8 @@ if __name__ == "__main__":
     if init_scale is not None:
         weights_init = Uniform(width=init_scale)
     else:
-        weights_init = Uniform(width=.2)
-    convnet = ConvNet(conv_activations,
+        weights_init = Uniform(width=.01)
+    convnet = ConvNet(conv_activations, 
                     num_channels=num_channels,
                     image_shape=input_size,
                     filter_sizes=zip(conv_sizes, conv_sizes),
@@ -119,7 +120,7 @@ if __name__ == "__main__":
                     border_mode='full',
                     weights_init=weights_init,
                     biases_init=Constant(0))
-    if init_scale is None: # TODO: rm??
+    if init_scale is None:
         # We push initialization config so that we can then
         # set different initialization schemes for convolutional layers.
         convnet.push_initialization_config()
@@ -151,27 +152,17 @@ if __name__ == "__main__":
 
     cg = ComputationGraph([cost, error_rate])
 
-    if L2:
-        cost += L2 * sum([tensor.sum(x**2) for x in cg.intermediary_variables if x.name == 'W'])**.5
-        cost = cost.copy(name='cost')
-        cg = ComputationGraph([cost, error_rate])
-
-    if dropout < 1.0:
-        dropout_inputs = [x for x in cg.intermediary_variables if x.name is not None and 'output' in x.name and 'rectifier' in x.name]
-        cg = apply_dropout(cg, dropout_inputs, dropout)
-
-
     if optimizer == 'adam':
-        algorithm = GradientDescent(step_rule=Adam(lr),
+        algorithm = GradientDescent(step_rule=Adam(learning_rate),
                                     cost=cost,
                                     parameters=cg.parameters)
     elif optimizer == 'momentum':
         algorithm = GradientDescent(step_rule=Momentum(
-                                        learning_rate=lr,
-                                        momentum=momentum),
+                                        learning_rate=learning_rate,
+                                        momentum=.9),
                                     cost=cost,
                                     parameters=cg.parameters)
-
+            
     extensions = [Timing(),
                   DataStreamMonitoring(
                       [cost, error_rate],
@@ -181,12 +172,12 @@ if __name__ == "__main__":
                       [cost, error_rate,
                        aggregation.mean(algorithm.total_gradient_norm)],
                       prefix="train",
-                      after_batch=True),
-                      #after_epoch=True),
+                      #after_batch=True),
+                      after_epoch=True),
                   Checkpoint(save_path),
                   #ProgressBar(),
-                  #Printing(),
-                  Printing(after_batch=True),
+                  Printing(),
+                  #Printing(after_batch=True),
                   TrackTheBest('valid_error_rate'),
                   FinishIfNoImprovementAfter('valid_error_rate_best_so_far', epochs=10)]
 
