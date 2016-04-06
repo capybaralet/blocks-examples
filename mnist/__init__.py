@@ -6,7 +6,7 @@ from argparse import ArgumentParser
 from theano import tensor
 
 from blocks.algorithms import GradientDescent, Scale
-from blocks.bricks import MLP, Tanh, Softmax, WEIGHT
+from blocks.bricks import MLP, Tanh, Softmax, Rectifier
 from blocks.bricks.cost import CategoricalCrossEntropy, MisclassificationRate
 from blocks.initialization import IsotropicGaussian, Constant
 from fuel.streams import DataStream
@@ -22,22 +22,23 @@ from blocks.extensions.saveload import Checkpoint
 from blocks.extensions.monitoring import (DataStreamMonitoring,
                                           TrainingDataMonitoring)
 from blocks.main_loop import MainLoop
+from blocks.roles import WEIGHT
 
 try:
-    from blocks.extras.extensions.plot import Plot
+    from blocks_extras.extensions.plot import Plot
     BLOCKS_EXTRAS_AVAILABLE = True
 except:
     BLOCKS_EXTRAS_AVAILABLE = False
 
 
 def main(save_to, num_epochs):
-    mlp = MLP([Tanh(), Softmax()], [784, 100, 10],
+    mlp = MLP([Rectifier(), Softmax()], [784, 500, 10],
               weights_init=IsotropicGaussian(0.01),
               biases_init=Constant(0))
     mlp.initialize()
     x = tensor.matrix('features')
     y = tensor.lmatrix('targets')
-    probs = mlp.apply(tensor.flatten(x, outdim=2))
+    probs = mlp.apply(x)
     cost = CategoricalCrossEntropy().apply(y.flatten(), probs)
     error_rate = MisclassificationRate().apply(y.flatten(), probs)
 
@@ -48,6 +49,9 @@ def main(save_to, num_epochs):
 
     mnist_train = MNIST(("train",))
     mnist_test = MNIST(("test",))
+
+    import ipdb; ipdb.set_trace()
+
 
     algorithm = GradientDescent(
         cost=cost, parameters=cg.parameters,

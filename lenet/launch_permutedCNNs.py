@@ -7,25 +7,25 @@ from speechgeneration.wordembeddings.launchers.job_launchers import launch
 
 
 filename = os.path.basename(__file__)[:-3]
-script_path = "./lenet.py"
-
-
-# TODO
-seed = 99
-
-momentum = .99
+script_path = "./lenet_script.py"
 
 
 jobs = []
+#for seed in range(1,3):
 for data_set in ['MNIST', 'CIFAR10']:
-    for permuted in [0,1]:
-        cmd_line_args = []
-        # TODO: make this automatic somehow???
-        cmd_line_args.append(['data_set', data_set])
-        cmd_line_args.append(['permuted', permuted])
-        jobs.append((script_path, cmd_line_args))
+    for learning_rate in [.1, .01, .001]:
+        for optimizer in ['adam', 'momentum']:
+            for permuted in [0,1]:
+                cmd_line_args = []
+                # TODO: make this automatic somehow???
+                cmd_line_args.append(['data_set', data_set])
+                cmd_line_args.append(['permuted', permuted])
+                #
+                cmd_line_args.append(['learning_rate', learning_rate])
+                cmd_line_args.append(['optimizer', optimizer])
+                jobs.append((script_path, cmd_line_args))
 
-gpus = range(2)
+gpus = range(4,8)
 ngpu = gpus[0]
 print "njobs =", len(jobs) #30?
 print "ngpus =", len(gpus)

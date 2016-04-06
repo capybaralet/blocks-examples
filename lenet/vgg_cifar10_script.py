@@ -9,7 +9,7 @@ np = numpy
 from theano import tensor
 
 from blocks.algorithms import GradientDescent, Scale
-from blocks.bricks import (MLP, Rectifier, Initializable, FeedforwardSequence,
+from blocks.bricks import (MLP, Activation, Rectifier, Initializable, FeedforwardSequence,
                            Softmax)
 from blocks.bricks.conv import (ConvolutionalSequence,
                                 Flattener, MaxPooling)
@@ -32,23 +32,35 @@ from toolz.itertoolz import interleave
 #from capy.blocks_utils import *
 #from capy.theano_utils import *
 
-from lenet import LeNet
+from lenet import ConvNet
+from get_data_streams import get_data_streams
 
+import inspect
+from block_utils import get_batch
 
 """
+
+An attempt to implement the vgg-style network described here:
+    http://torch.ch/blog/2015/07/30/cifar.html 
+    (92.45% on CIFAR10) 
+    They use only horizontal flips (we don't, yet)
+
 TODO:
-    extensions (what do I want to monitor???)
-    regularizers (BN, dropout)
+    everything!
+
+
+
+START OVER FROM lenet_script!
 """
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     parser = ArgumentParser("parse")
     # TODO: checkme - vs _
-    parser.add_argument("--conv_sizes", type=str, default="5_5"])
-    parser.add_argument("--feature_maps", type=str, default="20_50"])
-    parser.add_argument("--mlp_hiddens", type=str, default="500"])
-    parser.add_argument("--pool_sizes", type=str, default="2_2"])
+    parser.add_argument("--conv_sizes", type=str, default="5_5")
+    parser.add_argument("--feature_maps", type=str, default="20_50")
+    parser.add_argument("--mlp_hiddens", type=str, default="500")
+    parser.add_argument("--pool_sizes", type=str, default="2_2")
     parser.add_argument("--batch_size", type=int, default=128)
     # DK params
     parser.add_argument("--data_set", type=str, default="MNIST")
@@ -77,13 +89,19 @@ if __name__ == "__main__":
 
 
     # ------------------------- make CNN ----------------------------- #
+    # make layers:
+    layers = []
+
+    # make CNN model
+
+
     conv_activations = [Rectifier() for _ in feature_maps]
     mlp_activations = [Rectifier() for _ in mlp_hiddens] + [Softmax()]
     if self.init_scale is not None:
         weights_init = Uniform(width=self.init_scale)
     else:
         weights_init = Uniform(width=.2)
-    convnet = LeNet(conv_activations, 1, image_size,
+    convnet = ConvNet(conv_activations, 1, image_size,
                     filter_sizes=zip(conv_sizes, conv_sizes),
                     feature_maps=feature_maps,
                     pooling_sizes=zip(pool_sizes, pool_sizes),
@@ -106,8 +124,9 @@ if __name__ == "__main__":
     logging.info("Input dim: {} {} {}".format(
         *convnet.children[0].get_dim('input_')))
     for i, layer in enumerate(convnet.layers):
-        logging.info("Layer {} ({}) dim: {} {} {}".format(
-            i, layer.__class__.__name__, *layer.get_dim('output')))
+        if not Activation in inspect.getmro(type(layer)):
+            logging.info("Layer {} ({}) dim: {} {} {}".format(
+                i, layer.__class__.__name__, *layer.get_dim('output')))
 
     x = tensor.tensor4('features')
     x.tag.test_value = get_batch(train_stream)[0]
