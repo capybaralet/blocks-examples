@@ -129,6 +129,10 @@ if __name__ == "__main__":
         convnet.top_mlp.linear_transformations[0].weights_init = Uniform(width=.08)
         convnet.top_mlp.linear_transformations[1].weights_init = Uniform(width=.11)
     convnet.initialize()
+
+    # TODO: load weights from file!
+
+
     # ------------------------- make CNN ----------------------------- #
 
     logging.info("Input dim: {} {} {}".format(
@@ -140,8 +144,12 @@ if __name__ == "__main__":
 
     x = tensor.tensor4('features')
     x.tag.test_value = get_batch(train_stream)[0]
+    print x.tag.test_value.shape
     y = tensor.lmatrix('targets')
     y.tag.test_value = get_batch(train_stream)[1]
+    if 1:
+        x.tag.test_value = np.load('/data/lisa/data/mnist/mnist-python/100examples/train100_x.npy').reshape((100,1,28,28))
+        y.tag.test_value = np.load('/data/lisa/data/mnist/mnist-python/100examples/train100_y.npy').reshape((100,1))
 
     # Normalize input and apply the convnet
     probs = convnet.apply(x)
@@ -151,6 +159,9 @@ if __name__ == "__main__":
             name='error_rate')
 
     cg = ComputationGraph([cost, error_rate])
+
+    outputs = [var for var in cg.variables if var.name is not None and 'output' in var.name]
+    predictions = [var for var in cg.variables if var.name == 'argmax'] [0]
 
     if optimizer == 'adam':
         algorithm = GradientDescent(step_rule=Adam(learning_rate),
@@ -169,8 +180,13 @@ if __name__ == "__main__":
                       valid_stream,
                       prefix="valid"),
                   TrainingDataMonitoring(
-                      [cost, error_rate,
-                       aggregation.mean(algorithm.total_gradient_norm)],
+                      [outputs, 
+                       algorithm.gradients,
+                       cost, 
+                       predictions,
+                       error_rate,
+                       #aggregation.mean(algorithm.total_gradient_norm),
+                       ],
                       prefix="train",
                       #after_batch=True),
                       after_epoch=True),
@@ -188,3 +204,6 @@ if __name__ == "__main__":
         model=model,
         extensions=extensions)
     main_loop.run()
+
+
+
